@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QFrame, QGridLayout, QTextEdit, QDialog, QDialogButtonBox,
                              QProgressBar, QTextBrowser)
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QProcess
-from PyQt5.QtGui import QFont, QPalette, QColor
+from PyQt5.QtGui import QFont, QPalette, QColor, QCloseEvent
 
 class PoseMapperWorker(QThread):
     """Worker thread to run PoseMapper using QProcess"""
@@ -130,6 +130,7 @@ class PoseMapperGUI(QWidget):
         # Initialize variables
         self.input_file = ""
         self.output_file = ""
+        self.character_image = ""
         self.model_type = "COCO"
         self.style = "default"
         self.background = ""
@@ -162,23 +163,34 @@ class PoseMapperGUI(QWidget):
         input_label = QLabel("Input Video:")
         self.input_entry = QLineEdit()
         self.input_entry.setPlaceholderText("Select input video file...")
-        input_browse_btn = QPushButton("Browse...")
-        input_browse_btn.clicked.connect(self.browse_input)
+        self.input_browse_btn = QPushButton("Browse...")
+        self.input_browse_btn.clicked.connect(self.browse_input)
 
         file_layout.addWidget(input_label, 0, 0)
         file_layout.addWidget(self.input_entry, 0, 1)
-        file_layout.addWidget(input_browse_btn, 0, 2)
+        file_layout.addWidget(self.input_browse_btn, 0, 2)
 
         # Output File
         output_label = QLabel("Output Video:")
         self.output_entry = QLineEdit()
         self.output_entry.setPlaceholderText("Select output video file...")
-        output_browse_btn = QPushButton("Browse...")
-        output_browse_btn.clicked.connect(self.browse_output)
+        self.output_browse_btn = QPushButton("Browse...")
+        self.output_browse_btn.clicked.connect(self.browse_output)
 
         file_layout.addWidget(output_label, 1, 0)
         file_layout.addWidget(self.output_entry, 1, 1)
-        file_layout.addWidget(output_browse_btn, 1, 2)
+        file_layout.addWidget(self.output_browse_btn, 1, 2)
+
+        # Character Image
+        character_label = QLabel("Character Image:")
+        self.character_entry = QLineEdit()
+        self.character_entry.setPlaceholderText("Select character image (optional)...")
+        self.character_browse_btn = QPushButton("Browse...")
+        self.character_browse_btn.clicked.connect(self.browse_character)
+
+        file_layout.addWidget(character_label, 2, 0)
+        file_layout.addWidget(self.character_entry, 2, 1)
+        file_layout.addWidget(self.character_browse_btn, 2, 2)
 
         self.content_layout.addWidget(file_group)
 
@@ -259,9 +271,9 @@ class PoseMapperGUI(QWidget):
         self.json_entry.setEnabled(False)
         export_layout.addWidget(self.json_entry, 0, 1)
 
-        json_browse_btn = QPushButton("Browse...")
-        json_browse_btn.clicked.connect(self.browse_json)
-        export_layout.addWidget(json_browse_btn, 0, 2)
+        self.json_browse_btn = QPushButton("Browse...")
+        self.json_browse_btn.clicked.connect(self.browse_json)
+        export_layout.addWidget(self.json_browse_btn, 0, 2)
 
         self.content_layout.addWidget(export_group)
 
@@ -400,7 +412,7 @@ class PoseMapperGUI(QWidget):
                 background-color: #b71c1c;
             }
         """)
-        self.exit_button.clicked.connect(self.close)
+        self.exit_button.clicked.connect(self.exit_application)
 
         button_layout.addStretch()
         button_layout.addWidget(self.run_button)
@@ -418,8 +430,10 @@ class PoseMapperGUI(QWidget):
         # File selection controls
         self.input_entry.setEnabled(False)
         self.output_entry.setEnabled(False)
+        self.character_entry.setEnabled(False)
         self.input_browse_btn.setEnabled(False)
         self.output_browse_btn.setEnabled(False)
+        self.character_browse_btn.setEnabled(False)
 
         # Model settings
         self.model_combo.setEnabled(False)
@@ -455,8 +469,10 @@ class PoseMapperGUI(QWidget):
         # File selection controls
         self.input_entry.setEnabled(True)
         self.output_entry.setEnabled(True)
+        self.character_entry.setEnabled(True)
         self.input_browse_btn.setEnabled(True)
         self.output_browse_btn.setEnabled(True)
+        self.character_browse_btn.setEnabled(True)
 
         # Model settings
         self.model_combo.setEnabled(True)
@@ -563,6 +579,15 @@ class PoseMapperGUI(QWidget):
         if filename:
             self.json_file = filename
             self.json_entry.setText(filename)
+
+    def browse_character(self):
+        """Browse for character image file"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Select Character Image", "",
+            "Image files (*.png *.jpg *.jpeg *.bmp *.tiff);;All files (*.*)")
+        if filename:
+            self.character_image = filename
+            self.character_entry.setText(filename)
     
     def build_command(self):
         """Build the command line arguments"""
@@ -571,6 +596,9 @@ class PoseMapperGUI(QWidget):
 
         if self.input_file:
             cmd.extend(["--input", self.input_file])
+
+        if self.character_image:
+            cmd.extend(["--character-image", self.character_image])
 
         if self.output_file:
             cmd.extend(["--output", self.output_file])
@@ -725,6 +753,29 @@ class PoseMapperGUI(QWidget):
 
         # Keep progress bar visible for a moment to show completion
         QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
+
+    def exit_application(self):
+        """Exit the application with proper cleanup"""
+        # Stop any running worker thread
+        if hasattr(self, 'worker') and self.worker:
+            self.status_text.append("Stopping running process...")
+            self.worker.stop()
+            if self.worker.isRunning():
+                self.worker.wait(5000)  # Wait up to 5 seconds for graceful shutdown
+
+        # Close the application
+        self.close()
+
+    def closeEvent(self, event: QCloseEvent):
+        """Handle window close event (X button, Alt+F4, etc.)"""
+        # Stop any running worker thread before closing
+        if hasattr(self, 'worker') and self.worker:
+            self.worker.stop()
+            if self.worker.isRunning():
+                self.worker.wait(5000)  # Wait up to 5 seconds for graceful shutdown
+
+        # Accept the close event
+        event.accept()
 
 def main():
     """Main function to run the GUI"""

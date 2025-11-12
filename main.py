@@ -16,6 +16,8 @@ def parse_arguments():
     # Input/Output options
     parser.add_argument("--input", "-i", type=str, default=INPUT_VIDEO,
                         help="Input video file path or webcam index (default: input.mp4)")
+    parser.add_argument("--character-image", type=str, default=None,
+                        help="Character image to animate with pose (optional)")
     parser.add_argument("--output", "-o", type=str, default=OUTPUT_VIDEO,
                         help="Output video file path (default: output.mp4)")
     parser.add_argument("--no-output", action="store_true",
@@ -157,6 +159,17 @@ def main():
         show_confidence=args.show_confidence,
         style=args.style
     )
+
+    # Initialize pose transfer if character image is provided
+    pose_transfer = None
+    if args.character_image:
+        try:
+            from renderer import PoseTransfer
+            pose_transfer = PoseTransfer(args.character_image, args.model_type)
+            print(f"Loaded character image: {args.character_image}")
+        except Exception as e:
+            print(f"Error loading character image: {e}")
+            pose_transfer = None
     print("Renderer initialized")
     
     # Initialize display_available before try block
@@ -236,12 +249,17 @@ def main():
                     # Default: use original video background
                     render_frame = frame.copy()
 
-                # Render pose
-                render_frame = renderer.draw_pose(render_frame, points, confidences)
+                # Render pose or transfer character
+                if pose_transfer:
+                    # Use pose transfer to animate character image
+                    render_frame = pose_transfer.transfer_pose(points, render_frame)
+                else:
+                    # Use traditional pose rendering
+                    render_frame = renderer.draw_pose(render_frame, points, confidences)
 
-                # Show angles if requested
-                if args.show_angles:
-                    render_frame = renderer.draw_pose_angles(render_frame, points)
+                    # Show angles if requested
+                    if args.show_angles:
+                        render_frame = renderer.draw_pose_angles(render_frame, points)
 
                 # Write frame to output
                 processor.write_frame(render_frame)
