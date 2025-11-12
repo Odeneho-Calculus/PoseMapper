@@ -18,7 +18,7 @@ PoseMapper is a Python-based software for pose estimation and stickman animation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/PoseMapper.git
+git clone https://github.com/Odeneho-Calculus/PoseMapper.git
 cd PoseMapper
 ```
 
